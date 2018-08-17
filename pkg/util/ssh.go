@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"time"
+	"github.com/pkg/sftp"
 )
 
 type Result struct {
@@ -47,6 +48,7 @@ func DefaultSSHClient() SSHClient {
 
 // 设置ssh所需的config
 func (client *SSHClient) ParseConfig() (ssh.ClientConfig, error) {
+
 	var (
 		authMethods []ssh.AuthMethod
 		signer      ssh.Signer
@@ -82,10 +84,28 @@ func (client *SSHClient) ParseConfig() (ssh.ClientConfig, error) {
 		authMethods = append(authMethods, ssh.PublicKeys(signer))
 	}
 
+	var supportedCiphers = []string{
+		"aes128-ctr",
+		"aes192-ctr",
+		"aes256-ctr",
+		"aes128-gcm@openssh.com",
+		"aes256-gcm@openssh.com",
+		"arcfour256",
+		"arcfour128",
+		"aes128-cbc",
+		"3des-cbc",
+		"aes192-cbc",
+		"aes256-cbc",
+		"chacha20-poly1305@openssh.com",
+	}
+
 	return ssh.ClientConfig{
 		User:    client.User,
 		Auth:    authMethods,
 		Timeout: time.Duration(client.Timeout) * time.Second,
+		Config: ssh.Config{
+			Ciphers: supportedCiphers,
+		},
 		HostKeyCallback: func(hostname string, remote net.Addr, key ssh.PublicKey) error {
 			return nil
 		},
@@ -105,6 +125,24 @@ func (s *SSHClient) Connect(config ssh.ClientConfig) (*ssh.Session, error) {
 	session, err := conn.NewSession()
 	if err != nil {
 		return &ssh.Session{}, err
+	}
+
+	return session, nil
+}
+
+// 建立sftp连接
+func (s *SSHClient) SftpConnect(config ssh.ClientConfig) (*sftp.Client, error) {
+
+	// 建立连接
+	conn, err := ssh.Dial("tcp", fmt.Sprintf("%s:%d", s.Ip, s.Port), &config)
+	if err != nil {
+		return &sftp.Client{}, err
+	}
+
+	// 建立session
+	session, err := sftp.NewClient(conn)
+	if err != nil {
+		return &sftp.Client{}, err
 	}
 
 	return session, nil
